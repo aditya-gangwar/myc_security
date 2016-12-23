@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="myc_security:jar">
+    <output-path>$PROJECT_DIR$/../backend2/libs</output-path>
+    <root id="archive" name="myc_security.jar">
+      <element id="module-output" name="myc_security" />
+    </root>
+  </artifact>
+</component>
