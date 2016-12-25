@@ -21,6 +21,8 @@ public class AES {
     private static final int SALT_LENGTH = 8; // in bytes
     private static final int AUTH_KEY_LENGTH = 4; // in bytes
     private static final int ITERATIONS = 1000;
+    //length of the AES key in bits (128, 192, or 256)
+    private static final int KEY_LENGTH = 128;
 
     // Process input/output streams in chunks - arbitrary
     private static final int BUFFER_SIZE = 1024;
@@ -77,31 +79,23 @@ public class AES {
      *   <li><b>IV</b>: pseudorandom AES initialization vector (16 bytes)</li>
      * </ul>
      *
-     * @param keyLength
-     *   key length to use for AES encryption (must be 128, 192, or 256)
      * @param password
      *   password to use for encryption
      * @param input
      *   an arbitrary byte stream to encrypt
      * @param output
      *   stream to which encrypted data will be written
-     * @throws AES.InvalidKeyLengthException
-     *   if keyLength is not 128, 192, or 256
      * @throws AES.StrongEncryptionNotAvailableException
      *   if keyLength is 192 or 256, but the Java runtime's jurisdiction
      *   policy files do not allow 192- or 256-bit encryption
      * @throws IOException
      */
-    public static void encrypt(int keyLength, char[] password, InputStream input, OutputStream output)
-            throws InvalidKeyLengthException, StrongEncryptionNotAvailableException, IOException {
-        // Check validity of key length
-        if (keyLength != 128 && keyLength != 192 && keyLength != 256) {
-            throw new InvalidKeyLengthException(keyLength);
-        }
+    public static void encrypt(char[] password, InputStream input, OutputStream output)
+            throws StrongEncryptionNotAvailableException, IOException {
 
         // generate salt and derive keys for authentication and encryption
         byte[] salt = generateSalt(SALT_LENGTH);
-        Keys keys = keygen(keyLength, password, salt);
+        Keys keys = keygen(KEY_LENGTH, password, salt);
 
         // initialize AES encryption
         Cipher encrypt = null;
@@ -110,7 +104,7 @@ public class AES {
             encrypt.init(Cipher.ENCRYPT_MODE, keys.encryption);
         } catch (NoSuchAlgorithmException | NoSuchPaddingException impossible) { }
         catch (InvalidKeyException e) { // 192 or 256-bit AES not available
-            throw new StrongEncryptionNotAvailableException(keyLength);
+            throw new StrongEncryptionNotAvailableException(KEY_LENGTH);
         }
 
         // get initialization vector
@@ -120,7 +114,7 @@ public class AES {
         } catch (InvalidParameterSpecException impossible) { }
 
         // write authentication and AES initialization data
-        output.write(keyLength / 8);
+        output.write(KEY_LENGTH / 8);
         output.write(salt);
         output.write(keys.authentication.getEncoded());
         output.write(iv);
@@ -233,15 +227,6 @@ public class AES {
      * Thrown if an attempt is made to decrypt a stream with an incorrect password.
      */
     public static class InvalidPasswordException extends Exception { }
-
-    /**
-     * Thrown if an attempt is made to encrypt a stream with an invalid AES key length.
-     */
-    public static class InvalidKeyLengthException extends Exception {
-        InvalidKeyLengthException(int length) {
-            super("Invalid AES key length: " + length);
-        }
-    }
 
     /**
      * Thrown if 192- or 256-bit AES encryption or decryption is attempted,

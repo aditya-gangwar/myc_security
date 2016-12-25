@@ -18,14 +18,14 @@ import javax.crypto.spec.*;
  */
 public class SimpleAES {
     // AES specification - changing will break existing encrypted streams!
-    //private static final String CIPHER_SPEC = "AES/CBC/PKCS5Padding";
     private static final String CIPHER_SPEC = "AES/ECB/PKCS5Padding";
 
     // Key derivation specification - changing will break existing streams!
     private static final String KEYGEN_SPEC = "PBKDF2WithHmacSHA1";
-    private static final int SALT_LENGTH = 10; // in bytes
-    //private static final int AUTH_KEY_LENGTH = 4; // in bytes
-    private static final int ITERATIONS = 1000;
+    private static final int SALT_LENGTH = 9; // in bytes
+    private static final int ITERATIONS = 2000;
+    //length of the AES key in bits (128, 192, or 256)
+    private static final int KEY_LENGTH = 128;
 
     // Process input/output streams in chunks - arbitrary
     private static final int BUFFER_SIZE = 1024;
@@ -45,7 +45,6 @@ public class SimpleAES {
      * Derive an AES encryption key and authentication key from given password and salt,
      * using PBKDF2 key stretching. The authentication key is 64 bits long.
      *
-     * @param keyLength length of the AES key in bits (128, 192, or 256)
      * @param password  the password from which to derive the keys
      * @param salt      the salt from which to derive the keys
      * @return a Keys object containing the two generated keys
@@ -58,7 +57,6 @@ public class SimpleAES {
             return null;
         }
         // derive a longer key, then split into AES key and authentication key
-        //KeySpec spec = new PBEKeySpec(password, salt, ITERATIONS, keyLength + AUTH_KEY_LENGTH * 8);
         KeySpec spec = new PBEKeySpec(password, salt, ITERATIONS, keyLength);
         SecretKey tmp = null;
         try {
@@ -66,11 +64,8 @@ public class SimpleAES {
         } catch (InvalidKeySpecException impossible) {
         }
         byte[] fullKey = tmp.getEncoded();
-        /*SecretKey authKey = new SecretKeySpec( // key for password authentication
-                Arrays.copyOfRange(fullKey, 0, AUTH_KEY_LENGTH), "AES");*/
         SecretKey encKey = new SecretKeySpec( // key for AES encryption
                 Arrays.copyOfRange(fullKey, 0, fullKey.length), "AES");
-        //return new SimplePBAES.Keys(encKey);
         return encKey;
     }
 
@@ -85,25 +80,18 @@ public class SimpleAES {
      * <li><b>IV</b>: pseudorandom AES initialization vector (16 bytes)</li>
      * </ul>
      *
-     * @param keyLength key length to use for AES encryption (must be 128, 192, or 256)
      * @param password  password to use for encryption
      * @param text     string to encrypt
-     * @throws SimpleAES.InvalidKeyLengthException             if keyLength is not 128, 192, or 256
      * @throws SimpleAES.StrongEncryptionNotAvailableException if keyLength is 192 or 256, but the Java runtime's jurisdiction
      *                                                           policy files do not allow 192- or 256-bit encryption
      * @throws IOException
      */
-    public static String encrypt(int keyLength, char[] password, String text)
-            throws SimpleAES.InvalidKeyLengthException, SimpleAES.StrongEncryptionNotAvailableException, IOException {
-        // Check validity of key length
-        if (keyLength != 128 && keyLength != 192 && keyLength != 256) {
-            throw new SimpleAES.InvalidKeyLengthException(keyLength);
-        }
+    public static String encrypt(char[] password, String text)
+            throws SimpleAES.StrongEncryptionNotAvailableException, IOException {
 
         // generate salt and derive keys for authentication and encryption
         byte[] salt = generateSalt(SALT_LENGTH);
-        //SimplePBAES.Keys keys = keygen(keyLength, password, salt);
-        SecretKey key = keygen(keyLength, password, salt);
+        SecretKey key = keygen(KEY_LENGTH, password, salt);
 
         // initialize AES encryption
         Cipher encrypt = null;
@@ -112,27 +100,19 @@ public class SimpleAES {
             encrypt.init(Cipher.ENCRYPT_MODE, key);
         } catch (NoSuchAlgorithmException | NoSuchPaddingException impossible) {
         } catch (InvalidKeyException e) { // 192 or 256-bit AES not available
-            throw new SimpleAES.StrongEncryptionNotAvailableException(keyLength);
+            throw new SimpleAES.StrongEncryptionNotAvailableException(KEY_LENGTH);
         }
-
-        // get initialization vector
-        /*byte[] iv = null;
-        try {
-            iv = encrypt.getParameters().getParameterSpec(IvParameterSpec.class).getIV();
-        } catch (InvalidParameterSpecException impossible) { }*/
 
         // write authentication and AES initialization data
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        output.write(keyLength / 8);
+        output.write(KEY_LENGTH / 8);
         output.write(salt);
-        //output.write(keys.authentication.getEncoded());
-        //output.write(iv);
 
         // read data from input into buffer, encrypt and write to output
         byte[] buffer = new byte[BUFFER_SIZE];
         int numRead;
         byte[] encrypted = null;
-        ByteArrayInputStream input = new ByteArrayInputStream(text.getBytes());
+        ByteArrayInputStream input = new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
         while ((numRead = input.read(buffer)) > 0) {
             encrypted = encrypt.update(buffer, 0, numRead);
             if (encrypted != null) {
@@ -176,17 +156,9 @@ public class SimpleAES {
         // read salt, generate keys, and authenticate password
         byte[] salt = new byte[SALT_LENGTH];
         input.read(salt);
-        //SimplePBAES.Keys keys = keygen(keyLength, password, salt);
         SecretKey key = keygen(keyLength, password, salt);
-        /*byte[] authRead = new byte[AUTH_KEY_LENGTH];
-        input.read(authRead);
-        if (!Arrays.equals(keys.authentication.getEncoded(), authRead)) {
-            throw new SimplePBAES.InvalidPasswordException();
-        }*/
 
         // initialize AES decryption
-        /*byte[] iv = new byte[16]; // 16-byte I.V. regardless of key size
-        input.read(iv);*/
         Cipher decrypt = null;
         try {
             decrypt = Cipher.getInstance(CIPHER_SPEC);
@@ -217,32 +189,9 @@ public class SimpleAES {
         }
 
         return new String(output.toByteArray(), StandardCharsets.UTF_8);
-
-        //return keyLength;
     }
-
-    /**
-     * A tuple of encryption and authentication keys returned by {@link #keygen}
-     */
-    /*private static class Keys {
-        public final SecretKey encryption, authentication;
-        public Keys(SecretKey encryption, SecretKey authentication) {
-            this.encryption = encryption;
-            this.authentication = authentication;
-        }
-    }*/
-
 
     //******** EXCEPTIONS thrown by encrypt and decrypt ********
-
-    /**
-     * Thrown if an attempt is made to encrypt a stream with an invalid AES key length.
-     */
-    public static class InvalidKeyLengthException extends Exception {
-        InvalidKeyLengthException(int length) {
-            super("Invalid AES key length: " + length);
-        }
-    }
 
     /**
      * Thrown if 192- or 256-bit AES encryption or decryption is attempted,
@@ -261,8 +210,6 @@ public class SimpleAES {
         public InvalidAESStreamException() {
             super();
         }
-
-        ;
 
         public InvalidAESStreamException(Exception e) {
             super(e);
