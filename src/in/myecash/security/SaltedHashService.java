@@ -34,7 +34,7 @@ public class SaltedHashService {
         // http://csrc.nist.gov/publications/nistpubs/800-132/nist-sp800-132.pdf
         // iOS 4.x reportedly uses 10,000:
         // http://blog.crackpassword.com/2010/09/smartphone-forensics-cracking-blackberry-backup-passwords/
-        int iterations = 1000+1000;
+        int iterations = 1000+555;
 
         KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, iterations, derivedKeyLength);
 
